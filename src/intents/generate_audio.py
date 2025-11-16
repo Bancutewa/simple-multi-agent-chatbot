@@ -35,11 +35,11 @@ class GenerateAudioIntent(BaseIntent):
 
     def __init__(self, agent: Agent):
         super().__init__(agent)
-        # Tạo audio agent riêng với ElevenLabs tools
+        # Tạo audio agent riêng với ElevenLabs tools (lazy initialization)
         self.audio_agent = None
+        self._audio_agent_initialized = False
         self._audio_display_response = None  # Response đầy đủ cho display
         self._audio_history_response = None  # Response rút gọn cho history
-        self._initialize_audio_agent()
 
     def _initialize_audio_agent(self):
         """Khởi tạo audio agent với ElevenLabs tools"""
@@ -63,6 +63,11 @@ class GenerateAudioIntent(BaseIntent):
 
                 if firecrawl_api_key and FirecrawlTools:
                     tools.append(FirecrawlTools(api_key=firecrawl_api_key))
+
+                # Check if agent is available
+                if not self.agent or not hasattr(self.agent, 'model') or self.agent.model is None:
+                    print("Warning: Agent not available for audio initialization")
+                    return
 
                 self.audio_agent = Agent(
                     name="Audio Generation Agent",
@@ -114,6 +119,11 @@ Respond with the content to be converted to audio."""
 
         if not ELEVENLABS_AVAILABLE:
             return "❌ Tính năng tạo audio chưa được cài đặt. Vui lòng cài đặt elevenlabs package: `pip install elevenlabs`"
+
+        # Lazy initialize audio agent
+        if not self._audio_agent_initialized:
+            self._initialize_audio_agent()
+            self._audio_agent_initialized = True
 
         if not self.audio_agent:
             # Fallback: tạo demo audio player với sample audio (for testing UI)

@@ -8,12 +8,100 @@ from agno.agent import Agent
 from agno.models.google import Gemini
 from dotenv import load_dotenv
 from intents.intent_registry import intent_registry
+import uuid
 
 # Load environment variables
 load_dotenv()
 
 # Constants
-CHAT_HISTORY_FILE = "chat_history.json"
+CHAT_SESSIONS_FILE = "chat_sessions.json"
+
+class ChatSessionManager:
+    """Quản lý multiple chat sessions"""
+
+    def __init__(self):
+        self.sessions = self._load_sessions()
+        self.current_session_id = None
+
+    def _load_sessions(self) -> Dict[str, Dict]:
+        """Load sessions from file"""
+        try:
+            if os.path.exists(CHAT_SESSIONS_FILE):
+                with open(CHAT_SESSIONS_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            st.warning(f"Không thể tải sessions: {e}")
+        return {}
+
+    def _save_sessions(self):
+        """Save sessions to file"""
+        try:
+            with open(CHAT_SESSIONS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.sessions, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            st.error(f"Lỗi lưu sessions: {e}")
+
+    def create_session(self, title: str = None) -> str:
+        """Tạo session mới"""
+        session_id = str(uuid.uuid4())
+        if not title:
+            title = f"Chat {len(self.sessions) + 1}"
+
+        self.sessions[session_id] = {
+            "id": session_id,
+            "title": title,
+            "messages": [],
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+
+        self._save_sessions()
+        return session_id
+
+    def get_session(self, session_id: str) -> Optional[Dict]:
+        """Lấy session theo ID"""
+        return self.sessions.get(session_id)
+
+    def update_session_title(self, session_id: str, title: str):
+        """Cập nhật title của session"""
+        if session_id in self.sessions:
+            self.sessions[session_id]["title"] = title
+            self.sessions[session_id]["updated_at"] = datetime.now().isoformat()
+            self._save_sessions()
+
+    def add_message_to_session(self, session_id: str, role: str, content: str):
+        """Thêm message vào session"""
+        if session_id in self.sessions:
+            message = {
+                "role": role,
+                "content": content,
+                "timestamp": datetime.now().isoformat()
+            }
+            self.sessions[session_id]["messages"].append(message)
+            self.sessions[session_id]["updated_at"] = datetime.now().isoformat()
+            self._save_sessions()
+
+    def delete_session(self, session_id: str):
+        """Xóa session"""
+        if session_id in self.sessions:
+            del self.sessions[session_id]
+            self._save_sessions()
+
+    def get_all_sessions(self) -> List[Dict]:
+        """Lấy tất cả sessions, sắp xếp theo updated_at"""
+        sessions_list = list(self.sessions.values())
+        sessions_list.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        return sessions_list
+
+    def generate_session_title(self, session_id: str) -> str:
+        """Tự động tạo title từ tin nhắn đầu tiên"""
+        session = self.get_session(session_id)
+        if session and session["messages"]:
+            first_message = session["messages"][0]
+            if first_message["role"] == "user":
+                content = first_message["content"][:50]
+                return content if len(content) < 50 else content + "..."
+        return f"Chat {session_id[:8]}"
 
 # System prompt for intent analysis
 SYSTEM_INTENT_PROMPT = """
@@ -21,9 +109,9 @@ Bạn là một AI phân tích ý định.
 Nhiệm vụ: Phân tích câu hỏi của người dùng và trả về 1 trong 3 intent.
 Luôn trả về JSON hợp lệ, không gì khác.
 
-1. general_chat: Người dùng muốn trò chuyện, hỏi đáp, chào hỏi.
-2. generate_image: Người dùng muốn tạo ảnh, vẽ, generate image.
-3. generate_audio: Người dùng muốn tạo audio, podcast, đọc văn bản, tạo âm thanh.
+1. general_chat: Người dùng muốn trò chuyện, hỏi đáp, chào hỏi, hỏi thông tin.
+2. generate_image: Người dùng muốn tạo ảnh, vẽ, generate image, tạo hình ảnh. Từ khóa: vẽ, tạo ảnh, generate image, hình ảnh, bức ảnh.
+3. generate_audio: Người dùng muốn tạo audio, podcast, đọc văn bản, tạo âm thanh, phát âm. Từ khóa: đọc, phát, audio, âm thanh, podcast.
 
 {"intent": "general_chat", "message": "Nội dung chat"}
 HOẶC
@@ -51,6 +139,18 @@ Bạn: {"intent": "generate_audio", "description": "https://example.com/blog"}
 Ví dụ 5:
 Người dùng: "Thời tiết hôm nay thế nào?"
 Bạn: {"intent": "general_chat", "message": "Thời tiết hôm nay thế nào?"}
+
+Ví dụ 6:
+Người dùng: "Vẽ cho tôi một con chó"
+Bạn: {"intent": "generate_image", "description": "một con chó"}
+
+Ví dụ 7:
+Người dùng: "Tạo ảnh phong cảnh núi rừng"
+Bạn: {"intent": "generate_image", "description": "phong cảnh núi rừng"}
+
+Ví dụ 8:
+Người dùng: "Đọc bài viết này cho tôi nghe"
+Bạn: {"intent": "generate_audio", "description": "Đọc bài viết này cho tôi nghe"}
 """
 
 # System prompt for image generation
@@ -76,6 +176,9 @@ class MainChatbot:
         self.model_id = "gemini-2.5-flash"
         self.model = Gemini(id=self.model_id, api_key=self.api_key) if self.api_key else None
 
+        # Khởi tạo session manager
+        self.session_manager = ChatSessionManager()
+
         # Khởi tạo các intent agents thông qua registry
         self.intent_agents = {}
         self.intent_agent = None
@@ -88,8 +191,6 @@ class MainChatbot:
             SYSTEM_INTENT_PROMPT,
             "Luôn trả về JSON hợp lệ."
         ], markdown=False)
-
-        self.chat_history = self._load_chat_history()
 
     def _initialize_intent_agents(self):
         """Khởi tạo các intent agents thông qua registry"""
@@ -118,13 +219,17 @@ class MainChatbot:
             st.error(f"Lỗi khởi tạo agent '{name}': {e}")
             return None
 
-    def analyze_user_intent(self, message: str) -> Dict:
+    def analyze_user_intent(self, message: str, session_id: str = None) -> Dict:
         """Phân tích ý định của người dùng (dùng agent đã khởi tạo)"""
         if not self.intent_agent:
             return {"intent": "general_chat", "message": "Lỗi intent agent."}
 
         try:
-            context_str = self._format_conversation_context()
+            # Nếu không có session_id, sử dụng context mặc định
+            if session_id:
+                context_str = self._format_conversation_context(session_id)
+            else:
+                context_str = "Không có lịch sử hội thoại."
             intent_prompt = f"""
             # Lịch sử hội thoại (để tham khảo):
             {context_str}
@@ -139,7 +244,7 @@ class MainChatbot:
             response_text = response.content if hasattr(response, 'content') else str(response)
 
             cleaned = re.sub(r"^```json|```$", "", response_text, flags=re.MULTILINE).strip()
-            
+
             try:
                 return json.loads(cleaned)
             except json.JSONDecodeError:
@@ -154,13 +259,18 @@ class MainChatbot:
             print(f"Intent analysis error: {e}")
             return {"intent": "general_chat", "message": message}
 
-    def _format_conversation_context(self) -> str:
-        if not self.chat_history:
+    def _format_conversation_context(self, session_id: str) -> str:
+        """Format conversation context từ session hiện tại"""
+        session = self.session_manager.get_session(session_id)
+        if not session or not session["messages"]:
             return "Không có lịch sử hội thoại."
+
         context_parts = []
-        for msg in self.chat_history[-5:]:
+        # Lấy 5 tin nhắn gần nhất
+        recent_messages = session["messages"][-5:]
+        for msg in recent_messages:
             role = "User" if msg["role"] == "user" else "Assistant"
-            content = msg["content"][:100]
+            content = msg["content"][:100]  # Giới hạn độ dài
             context_parts.append(f"{role}: {content}")
         return "\n".join(context_parts)
 
@@ -172,41 +282,23 @@ class MainChatbot:
         return "🆘 **Hướng dẫn sử dụng**\n\n- **Trò chuyện:** Gửi tin nhắn bất kỳ.\n- **Tạo ảnh:** Gửi yêu cầu như 'vẽ một con mèo' hoặc 'tạo ảnh'.\n- **Tạo audio:** Gửi yêu cầu như 'đọc văn bản này' hoặc 'tạo podcast từ URL'."
 
     def _get_api_key(self) -> str:
-        api_key = os.getenv("GEMINI_API_KEY") or st.session_state.get("gemini_api_key", "")
+        """Lấy API key từ environment variable GEMINI_API_KEY"""
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
         if not api_key:
-            with st.sidebar:
-                st.header("🔑 API Configuration")
-                api_key_input = st.text_input("Gemini API Key", type="password", help="Nhập API key của Google Gemini")
-                if api_key_input:
-                    st.session_state.gemini_api_key = api_key_input
-                    st.success("✅ API key đã được lưu!")
-                    st.rerun() # Rerun để app khởi tạo agent với key mới
-                else:
-                    st.warning("⚠️ Vui lòng nhập API key để sử dụng")
+            st.error("❌ **Thiếu API Key!**\n\nVui lòng thiết lập biến môi trường `GEMINI_API_KEY`:\n\n```bash\nexport GEMINI_API_KEY=your_api_key_here\n```\n\nLấy API key tại: https://aistudio.google.com/")
+            st.stop()  # Dừng app nếu không có API key
         return api_key
 
-    def _load_chat_history(self) -> List[Dict]:
-        try:
-            if os.path.exists(CHAT_HISTORY_FILE):
-                with open(CHAT_HISTORY_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        except Exception as e:
-            st.warning(f"Không thể tải lịch sử chat: {e}")
-        return []
+    def add_message_to_session(self, session_id: str, role: str, content: str):
+        """Thêm message vào session cụ thể"""
+        self.session_manager.add_message_to_session(session_id, role, content)
 
-    def _save_chat_history(self):
-        try:
-            with open(CHAT_HISTORY_FILE, 'w', encoding='utf-8') as f:
-                json.dump(self.chat_history[-50:], f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            st.error(f"Lỗi lưu lịch sử chat: {e}")
+    def get_current_session_messages(self, session_id: str) -> List[Dict]:
+        """Lấy messages của session hiện tại"""
+        session = self.session_manager.get_session(session_id)
+        return session["messages"] if session else []
 
-    def add_message(self, role: str, content: str):
-        message = {"role": role, "content": content, "timestamp": datetime.now().isoformat()}
-        self.chat_history.append(message)
-        self._save_chat_history()
-
-    def get_response(self, user_input: str) -> str:
+    def get_response(self, user_input: str, session_id: str = None) -> str:
         """Hàm logic chính: 1. Phân tích intent -> 2. Gọi intent handler tương ứng"""
         if not self.api_key:
              return "❌ Vui lòng nhập API key ở thanh bên trái."
@@ -225,7 +317,7 @@ class MainChatbot:
                 return "🗑️ Để xóa lịch sử chat, hãy sử dụng nút 'Xóa lịch sử chat' ở cuối trang."
 
             # --- BƯỚC 1: PHÂN TÍCH INTENT ---
-            intent_analysis = self.analyze_user_intent(user_input)
+            intent_analysis = self.analyze_user_intent(user_input, session_id)
             intent = intent_analysis.get("intent", "general_chat")
 
             # --- BƯỚC 2: ĐIỀU HƯỚNG TỚI INTENT HANDLER TƯƠNG ỨNG ---
@@ -236,8 +328,8 @@ class MainChatbot:
                 if intent_handler:
                     # Lấy context cho conversation intents
                     context = None
-                    if intent == "general_chat":
-                        context = self._format_conversation_context()
+                    if intent == "general_chat" and session_id:
+                        context = self._format_conversation_context(session_id)
 
                     response = intent_handler.get_response(intent_analysis, context)
 
@@ -266,80 +358,157 @@ def main():
     st.set_page_config(
         page_title="🤖 AI Chatbot Assistant",
         page_icon="🤖",
-        layout="centered"
+        layout="wide"
     )
 
-    st.title("🤖 AI Chatbot Assistant")
-    st.markdown("### Chatbot AI đa năng (Chat, Tạo ảnh & Audio)")
-
+    # Khởi tạo chatbot
     if "chatbot" not in st.session_state:
         st.session_state.chatbot = MainChatbot()
-    
+
     chatbot = st.session_state.chatbot
 
-    # --- Sidebar ---
+    # Khởi tạo current session nếu chưa có
+    if "current_session_id" not in st.session_state:
+        # Tạo session mới hoặc lấy session gần nhất
+        sessions = chatbot.session_manager.get_all_sessions()
+        if sessions:
+            st.session_state.current_session_id = sessions[0]["id"]
+        else:
+            st.session_state.current_session_id = chatbot.session_manager.create_session()
+
+    current_session_id = st.session_state.current_session_id
+
+    # --- SIDEBAR: Chat History ---
     with st.sidebar:
-        st.header("ℹ️ Thông tin")
-        st.markdown("Một chatbot AI sử dụng Gemini, Pollinations.ai và ElevenLabs, được xây dựng với kiến trúc Multi-Agent (Intent -> Skill).")
-        st.divider()
-        st.header("🎯 Intent Handlers")
-        for intent_name in intent_registry.get_intent_names():
-            emoji_map = {
-                "general_chat": "💬",
-                "generate_image": "🖼️",
-                "generate_audio": "🎵"
-            }
-            emoji = emoji_map.get(intent_name, "🤖")
-            display_name = intent_name.replace("_", " ").title()
-            st.metric(display_name, emoji)
-        st.metric("Intent Analyzer", "🧠")
-        st.divider()
-        st.header("📊 Thống kê")
-        st.metric("Tin nhắn đã chat", len(chatbot.chat_history))
+        st.header("💬 Chat Sessions")
 
-    # 🎯 TỐI ƯU 3: Sử dụng st.chat_message để hiển thị lịch sử
-    # Giao diện đẹp và hiện đại hơn
-    if chatbot.api_key:
-        for message in chatbot.chat_history:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-    else:
-        st.info("👋 Vui lòng nhập Gemini API Key ở thanh bên (sidebar) để bắt đầu.")
+        # Hiển thị thông tin API key
+        st.caption(f"🔑 API: {'✅ Connected' if chatbot.api_key else '❌ Missing'}")
 
-    # 🎯 TỐI ƯU 4: Sử dụng st.chat_input cho ô nhập liệu
-    # Tự động xử lý việc gửi tin nhắn, không cần st.form hay st.button
-    if user_input := st.chat_input("Hỏi tôi hoặc yêu cầu 'vẽ một con chó'...", disabled=not chatbot.api_key):
-        
-        # Thêm tin nhắn người dùng vào lịch sử và hiển thị
-        chatbot.add_message("user", user_input)
-        with st.chat_message("user"):
-            st.markdown(user_input)
-
-        # Lấy phản hồi của bot và hiển thị
-        with st.chat_message("assistant"):
-            with st.spinner("🤖 Đang suy nghĩ..."):
-                bot_response = chatbot.get_response(user_input)
-
-                # Kiểm tra xem có display response đặc biệt không (cho audio)
-                display_response = st.session_state.get('audio_display_response', bot_response)
-                if 'audio_display_response' in st.session_state:
-                    del st.session_state.audio_display_response  # Xóa sau khi sử dụng
-
-                if display_response.strip():  # Chỉ hiển thị nếu có nội dung
-                    st.markdown(display_response, unsafe_allow_html=True)
-        
-        # Thêm tin nhắn của bot vào lịch sử
-        chatbot.add_message("assistant", bot_response)
-        
-        # Không cần st.rerun() nữa, st.chat_input xử lý việc này
-
-    # Nút xóa lịch sử (đặt ở cuối)
-    if chatbot.api_key and len(chatbot.chat_history) > 0:
-        if st.button("🗑️ Xóa lịch sử chat"):
-            chatbot.chat_history = []
-            chatbot._save_chat_history()
-            st.success("✅ Đã xóa lịch sử chat!")
+        # Nút tạo chat mới
+        if st.button("➕ New Chat", use_container_width=True):
+            new_session_id = chatbot.session_manager.create_session()
+            st.session_state.current_session_id = new_session_id
             st.rerun()
+
+        st.divider()
+
+        # Hiển thị danh sách sessions
+        sessions = chatbot.session_manager.get_all_sessions()
+
+        for session in sessions:
+            session_id = session["id"]
+            title = session["title"]
+            message_count = len(session["messages"])
+
+            # Highlight session hiện tại
+            if session_id == current_session_id:
+                st.markdown(f"**🟢 {title}** ({message_count} msgs)")
+            else:
+                if st.button(f"💬 {title} ({message_count})", key=f"session_{session_id}", use_container_width=True):
+                    st.session_state.current_session_id = session_id
+                    st.rerun()
+
+            # Menu cho mỗi session (rename, delete)
+            col1, col2 = st.columns([3, 1])
+            with col2:
+                if st.button("⋮", key=f"menu_{session_id}", help="Options"):
+                    st.session_state[f"show_menu_{session_id}"] = not st.session_state.get(f"show_menu_{session_id}", False)
+
+            # Menu options
+            if st.session_state.get(f"show_menu_{session_id}", False):
+                with st.container():
+                    if st.button("✏️ Rename", key=f"rename_{session_id}"):
+                        st.session_state[f"renaming_{session_id}"] = True
+
+                    if st.button("🗑️ Delete", key=f"delete_{session_id}"):
+                        chatbot.session_manager.delete_session(session_id)
+                        if current_session_id == session_id:
+                            # Chuyển sang session khác
+                            remaining_sessions = chatbot.session_manager.get_all_sessions()
+                            if remaining_sessions:
+                                st.session_state.current_session_id = remaining_sessions[0]["id"]
+                            else:
+                                st.session_state.current_session_id = chatbot.session_manager.create_session()
+                        st.rerun()
+
+            # Rename input
+            if st.session_state.get(f"renaming_{session_id}", False):
+                new_title = st.text_input(
+                    "New title:",
+                    value=title,
+                    key=f"title_input_{session_id}"
+                )
+                if st.button("💾 Save", key=f"save_rename_{session_id}"):
+                    rename_session(session_id, new_title)
+
+    # --- MAIN CONTENT: Current Chat ---
+    current_session = chatbot.session_manager.get_session(current_session_id)
+
+    if current_session:
+        st.title(f"🤖 {current_session['title']}")
+
+        # Hiển thị messages của session hiện tại
+        messages = current_session["messages"]
+
+        if messages:
+            for message in messages:
+                with st.chat_message(message["role"]):
+                    content = message["content"]
+
+                    # Kiểm tra xem có audio display response trong session state không
+                    if message["role"] == "assistant" and st.session_state.get('audio_display_response'):
+                        display_content = st.session_state.audio_display_response
+                        del st.session_state.audio_display_response
+                        st.markdown(display_content, unsafe_allow_html=True)
+                    else:
+                        st.markdown(content, unsafe_allow_html=True)
+        else:
+            st.info("👋 Bắt đầu cuộc trò chuyện mới!")
+
+        # Chat input (API key đã được kiểm tra ở init)
+        if user_input := st.chat_input("Hỏi tôi hoặc yêu cầu 'vẽ một con chó'...", disabled=not chatbot.api_key):
+
+                # Thêm tin nhắn người dùng vào session
+                chatbot.add_message_to_session(current_session_id, "user", user_input)
+
+                # Hiển thị message của user
+                with st.chat_message("user"):
+                    st.markdown(user_input)
+
+                # Lấy phản hồi của bot
+                with st.chat_message("assistant"):
+                    with st.spinner("🤖 Đang suy nghĩ..."):
+                        bot_response = chatbot.get_response(user_input, current_session_id)
+
+                        # Kiểm tra xem có display response đặc biệt không (cho audio)
+                        display_response = st.session_state.get('audio_display_response', bot_response)
+                        if 'audio_display_response' in st.session_state:
+                            del st.session_state.audio_display_response  # Xóa sau khi sử dụng
+
+                        if display_response.strip():  # Chỉ hiển thị nếu có nội dung
+                            st.markdown(display_response, unsafe_allow_html=True)
+
+                # Thêm tin nhắn của bot vào session
+                chatbot.add_message_to_session(current_session_id, "assistant", bot_response)
+
+                # Tự động cập nhật title nếu là tin nhắn đầu tiên
+                if len(current_session["messages"]) == 2:  # user + assistant
+                    auto_title = chatbot.session_manager.generate_session_title(current_session_id)
+                    if auto_title != current_session["title"]:
+                        chatbot.session_manager.update_session_title(current_session_id, auto_title)
+
+    else:
+        st.error("Session không tồn tại!")
+
+
+def rename_session(session_id: str, new_title: str):
+    """Helper function để rename session"""
+    if "chatbot" in st.session_state:
+        st.session_state.chatbot.session_manager.update_session_title(session_id, new_title)
+        if f"renaming_{session_id}" in st.session_state:
+            del st.session_state[f"renaming_{session_id}"]
+        st.rerun()
 
 if __name__ == "__main__":
     main()

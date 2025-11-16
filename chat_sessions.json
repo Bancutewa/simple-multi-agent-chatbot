@@ -1,0 +1,44 @@
+{
+  "ee8bf7c9-10d5-41cc-a2e1-1be59bdc8726": {
+    "id": "ee8bf7c9-10d5-41cc-a2e1-1be59bdc8726",
+    "title": "Chat 1",
+    "messages": [],
+    "created_at": "2025-11-16T10:56:56.284267",
+    "updated_at": "2025-11-16T10:56:56.284285"
+  },
+  "158c28af-c07c-448f-96cd-556d118aad9e": {
+    "id": "158c28af-c07c-448f-96cd-556d118aad9e",
+    "title": "Chat 2",
+    "messages": [],
+    "created_at": "2025-11-16T10:57:02.023940",
+    "updated_at": "2025-11-16T10:57:02.023945"
+  },
+  "30e8ddc0-7b4b-4d93-a32b-0f04b4729628": {
+    "id": "30e8ddc0-7b4b-4d93-a32b-0f04b4729628",
+    "title": "Xin chào",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Xin chào",
+        "timestamp": "2025-11-16T10:59:40.986794"
+      },
+      {
+        "role": "assistant",
+        "content": "👋 **Xin chào! Tôi là AI Chatbot Assistant**\n\nTôi có thể trò chuyện, tạo ảnh và tạo audio cho bạn. Bạn muốn thử gì nào?",
+        "timestamp": "2025-11-16T10:59:40.993244"
+      },
+      {
+        "role": "user",
+        "content": "tạo ảnh 1 con chó",
+        "timestamp": "2025-11-16T10:59:45.607445"
+      },
+      {
+        "role": "assistant",
+        "content": "🖼️ **Hình ảnh của bạn:**\n\n![a photorealistic image of a majestic golden retrie...](https://image.pollinations.ai/prompt/a%20photorealistic%20image%20of%20a%20majestic%20golden%20retriever%20sitting%20gracefully%20in%20a%20sunlit%20field%20of%20wildflowers%2C%20with%20a%20gentle%20breeze%20rustling%20its%20fur%2C%20a%20warm%20and%20inviting%20atmosphere%2C%20shallow%20depth%20of%20field%2C%20natural%20light%2C%20high%20detail)",
+        "timestamp": "2025-11-16T10:59:52.870103"
+      }
+    ],
+    "created_at": "2025-11-16T10:58:24.952090",
+    "updated_at": "2025-11-16T10:59:52.870118"
+  }
+}

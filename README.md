@@ -24,16 +24,28 @@ pip install -r requirements.txt
 
 ### 2. Cấu hình API Key
 
-```bash
-# Copy file cấu hình mẫu
-cp env.example .env
+**Cách 1: Thiết lập biến môi trường trực tiếp**
 
-# Chỉnh sửa file .env với API key của bạn
+**Windows:**
+```cmd
+set GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+**Linux/Mac:**
+```bash
+export GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+**Cách 2: Tạo file .env (khuyên dùng)**
+
+Tạo file `.env` trong thư mục gốc với nội dung:
+```env
 GEMINI_API_KEY=your_gemini_api_key_here
+ELEVEN_LABS_API_KEY=your_elevenlabs_api_key_here  # Optional
+FIRECRAWL_API_KEY=your_firecrawl_api_key_here     # Optional
 ```
 
 **Lấy API Key:**
-
 - **Gemini API Key**: Đăng ký tại [Google AI Studio](https://aistudio.google.com/)
 - Hoàn toàn miễn phí với 1,500 requests/ngày
 
@@ -42,10 +54,9 @@ GEMINI_API_KEY=your_gemini_api_key_here
 ```bash
 # Từ thư mục chatbot
 streamlit run app.py
-
-# Hoặc chạy trực tiếp
-python -m src.main_chatbot
 ```
+
+**Lưu ý:** App sẽ tự động dừng nếu không tìm thấy `GEMINI_API_KEY` trong environment.
 
 ## 🎯 Cách sử dụng
 
@@ -166,6 +177,22 @@ Dự án này sử dụng MIT License.
 - Gemini cung cấp 1,500 requests miễn phí mỗi ngày
 - Chatbot hoạt động hoàn toàn offline sau khi có API key
 - Lịch sử chat được lưu trữ cục bộ
+
+## 🎨 Giao diện ChatGPT-style
+
+### **Sidebar Features:**
+- ✅ **➕ New Chat**: Tạo cuộc trò chuyện mới
+- ✅ **💬 Session List**: Danh sách tất cả sessions với số tin nhắn
+- ✅ **🟢 Active Session**: Highlight session hiện tại
+- ✅ **⋮ Options Menu**: Rename/Delete từng session
+- ✅ **Auto-titles**: Tự động đặt title từ tin nhắn đầu tiên
+
+### **Main Chat Area:**
+- ✅ **Wide Layout**: Layout rộng rãi hơn
+- ✅ **Session-based**: Mỗi session lưu riêng biệt
+- ✅ **Persistent**: Chat history được lưu vào file `chat_sessions.json`
+- ✅ **Audio Support**: HTML audio player cho audio generation
+- ✅ **API Key Input**: Form nhập API key tích hợp
 
 ## 🆘 Hỗ trợ
 
